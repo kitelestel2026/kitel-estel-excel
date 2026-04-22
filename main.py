@@ -30,6 +30,14 @@ def st(cell,bg=WHITE,fg='000000',bold=False,align='center',size=9,wrap=False,ita
     cell.alignment=Alignment(horizontal=align,vertical='center',wrap_text=wrap)
     cell.border=brd()
 
+def fmt_date(iso):
+    if not iso: return ''
+    try:
+        parts = str(iso).split('T')[0].split('-')
+        return f"{parts[2]}/{parts[1]}/{parts[0]}"
+    except:
+        return str(iso)
+
 @app.route('/generate-excel',methods=['POST','OPTIONS'])
 def generate_excel():
     if request.method=='OPTIONS':
@@ -37,11 +45,15 @@ def generate_excel():
     data=request.json
     orders=data.get('orders',{})
     date_str=data.get('date','')
+    fecha_entrega=data.get('fecha_entrega', date_str)
+    date_display = fmt_date(date_str)
+    entrega_display = fmt_date(fecha_entrega)
+    
     wb=openpyxl.Workbook()
     ws=wb.active
     ws.title='CUADRANTE'
 
-    # ROW 1
+    # ROW 1: store numbers
     for c,v in [(1,None),(2,None),(3,'F'),(4,None)]:
         ws.cell(1,c).value=v
     st(ws.cell(1,1),bg=BLUE_HDR,fg=WHITE,bold=True)
@@ -57,10 +69,11 @@ def generate_excel():
         ws.merge_cells(start_row=1,start_column=col,end_row=1,end_column=col+1)
         col+=2
 
-    # ROW 2
-    ws.cell(2,1).value='x'; ws.cell(2,2).value=date_str
+    # ROW 2: dates + store names
+    ws.cell(2,1).value='x'
+    ws.cell(2,2).value=f"Pedido: {date_display} · Entrega: {entrega_display}"
     st(ws.cell(2,1),bg=BLUE_HDR,fg=WHITE,bold=True)
-    st(ws.cell(2,2),bg=BLUE_LT,bold=True)
+    st(ws.cell(2,2),bg=BLUE_LT,bold=True,size=9)
     st(ws.cell(2,3),bg=YELLOW,bold=True)
     st(ws.cell(2,4),bg=BLUE_LT,bold=True)
     col=5
@@ -72,7 +85,7 @@ def generate_excel():
         ws.merge_cells(start_row=2,start_column=col,end_row=2,end_column=col+1)
         col+=2
 
-    # ROW 3
+    # ROW 3: headers
     for c,v,a in [(1,'COD.','center'),(2,'CONCEPTO','left'),(3,'F','center'),(4,'T','center')]:
         ws.cell(3,c).value=v
         st(ws.cell(3,c),bg=BLUE_HDR,fg=WHITE,bold=True,size=8,align=a)
@@ -84,7 +97,7 @@ def generate_excel():
         ws.cell(3,col+1).value='P'; st(ws.cell(3,col+1),bg=bg,fg=BLUE_HDR,bold=True,size=8)
         col+=2
 
-    # DATA
+    # DATA ROWS
     all_cods=set()
     for sid_str,sdata in orders.items():
         for l in sdata.get('lineas',[]):
@@ -156,8 +169,9 @@ def generate_excel():
 
     buf=io.BytesIO()
     wb.save(buf); buf.seek(0)
+    fname = f'KITEL_entrega_{entrega_display.replace("/","-")}.xlsx'
     return send_file(buf,mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                     as_attachment=True,download_name=f'KITEL_{date_str}.xlsx')
+                     as_attachment=True,download_name=fname)
 
 @app.route('/')
 def health():
