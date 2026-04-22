@@ -102,20 +102,24 @@ def generate_excel():
             all_cods.add((l['cod'],l.get('concepto',''),l.get('tipo','')))
     sorted_cods=sorted(all_cods,key=lambda x:x[0])
 
+    # P columns (pedido) for SUM formula
+    p_cols = [get_column_letter(5 + i*2 + 1) for i in range(len(STORES))]
+
     row=4
     for cod,concepto,tipo in sorted_cods:
         alt=(row%2==0)
         rbg='F5F5F5' if alt else WHITE
-        total=0
-        for sid_str,sdata in orders.items():
-            for l in sdata.get('lineas',[]):
-                if l['cod']==cod:
-                    try: total+=float(l.get('pedido','0') or 0)
-                    except: pass
+
+        # SUM formula for pedido columns
+        sum_formula = '=IFERROR(SUM(' + '+'.join([f'IF(ISNUMBER({c}{row}),{c}{row},0)' for c in p_cols]) + '),0)'
+
         ws.cell(row,1).value=cod; st(ws.cell(row,1),bg=COD_BG,fg=COD_FG,bold=True)
         ws.cell(row,2).value=concepto; st(ws.cell(row,2),bg=rbg,align='left')
-        ws.cell(row,3).value=total if total else ''; st(ws.cell(row,3),bg=YELLOW,bold=True)
+        # Column C = total with formula
+        ws.cell(row,3).value=sum_formula
+        st(ws.cell(row,3),bg=YELLOW,bold=True,fg='000000')
         ws.cell(row,4).value=tipo; st(ws.cell(row,4),bg=rbg,fg='888888')
+
         col=5
         for i,(sid,snom) in enumerate(STORES):
             bg=(PINK if alt else PINK2) if i%2==0 else rbg
@@ -126,9 +130,13 @@ def generate_excel():
                         s_val=l.get('sobra','') or ''
                         p_val=l.get('pedido','') or ''
                         break
-            ws.cell(row,col).value=s_val
+            ws.cell(row,col).value=s_val if s_val else None
             st(ws.cell(row,col),bg=bg,fg=RED_FG if s_val else '000000',bold=bool(s_val))
-            ws.cell(row,col+1).value=p_val
+            # Pedido as number if possible
+            try:
+                ws.cell(row,col+1).value=float(p_val) if p_val else None
+            except:
+                ws.cell(row,col+1).value=p_val if p_val else None
             st(ws.cell(row,col+1),bg=bg,fg=BLUE_HDR if p_val else '000000',bold=bool(p_val))
             col+=2
         ws.row_dimensions[row].height=14
@@ -143,11 +151,11 @@ def generate_excel():
         for i,(sid,snom) in enumerate(STORES):
             enc=orders.get(str(sid),{}).get('encargs','') or ''
             bg=PINK if i%2==0 else WHITE
-            ws.cell(row,col).value=enc
+            ws.cell(row,col).value=enc if enc else None
             st(ws.cell(row,col),bg=bg,fg=BLUE_HDR,bold=bool(enc),align='left',wrap=True)
             st(ws.cell(row,col+1),bg=bg)
             col+=2
-        ws.row_dimensions[row].height=30
+        ws.row_dimensions[row].height=40
 
     # Widths
     ws.column_dimensions['A'].width=7
