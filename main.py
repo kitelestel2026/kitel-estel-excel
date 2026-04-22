@@ -44,11 +44,9 @@ def generate_excel():
         return '',200
     data=request.json
     orders=data.get('orders',{})
-    date_str=data.get('date','')
-    fecha_entrega=data.get('fecha_entrega', date_str)
-    date_display = fmt_date(date_str)
+    fecha_entrega=data.get('fecha_entrega','')
     entrega_display = fmt_date(fecha_entrega)
-    
+
     wb=openpyxl.Workbook()
     ws=wb.active
     ws.title='CUADRANTE'
@@ -69,11 +67,11 @@ def generate_excel():
         ws.merge_cells(start_row=1,start_column=col,end_row=1,end_column=col+1)
         col+=2
 
-    # ROW 2: dates + store names
+    # ROW 2: delivery date + store names
     ws.cell(2,1).value='x'
-    ws.cell(2,2).value=f"Pedido: {date_display} · Entrega: {entrega_display}"
+    ws.cell(2,2).value=entrega_display
     st(ws.cell(2,1),bg=BLUE_HDR,fg=WHITE,bold=True)
-    st(ws.cell(2,2),bg=BLUE_LT,bold=True,size=9)
+    st(ws.cell(2,2),bg=BLUE_LT,bold=True,size=11)
     st(ws.cell(2,3),bg=YELLOW,bold=True)
     st(ws.cell(2,4),bg=BLUE_LT,bold=True)
     col=5
@@ -169,7 +167,7 @@ def generate_excel():
 
     buf=io.BytesIO()
     wb.save(buf); buf.seek(0)
-    fname = f'KITEL_entrega_{entrega_display.replace("/","-")}.xlsx'
+    fname=f'KITEL_{entrega_display.replace("/","-")}.xlsx'
     return send_file(buf,mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                      as_attachment=True,download_name=fname)
 
