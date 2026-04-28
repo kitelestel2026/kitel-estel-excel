@@ -4,10 +4,10 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
 import io
- 
+
 app = Flask(__name__)
 CORS(app)
- 
+
 STORES = [
     (1,'DANTE'),(2,'CORCEGA'),(3,'BORRELL'),(5,'VALENCIA'),
     (6,'CONSEJO'),(7,'BAILEN'),(9,'P.NOU'),(4,'DOMICILI'),
@@ -15,21 +15,30 @@ STORES = [
     (28,'RAVAL'),(29,'PEDRA'),(23,'CALDES'),(32,'GLASS'),
     (10,'JULIA'),(16,'MES VI')
 ]
- 
+
 PINK='F4CCCC'; WHITE='FFFFFF'; PINK2='FBDADA'
 BLUE_HDR='1F4E79'; BLUE_LT='BDD7EE'; YELLOW='FFF2CC'
 COD_BG='D6E4F0'; COD_FG='1A7AAD'; RED_FG='C00000'
- 
+
+def to_num(val):
+    """Convierte string a float, acepta tanto punto como coma decimal"""
+    if val is None or val == '':
+        return None
+    try:
+        return float(str(val).replace(',', '.').strip())
+    except:
+        return None
+
 def brd():
     s=Side(style='thin',color='AAAAAA')
     return Border(left=s,right=s,top=s,bottom=s)
- 
+
 def st(cell,bg=WHITE,fg='000000',bold=False,align='center',size=9,wrap=False,italic=False):
     cell.font=Font(name='Arial',bold=bold,color=fg,size=size,italic=italic)
     cell.fill=PatternFill('solid',fgColor=bg)
     cell.alignment=Alignment(horizontal=align,vertical='center',wrap_text=wrap)
     cell.border=brd()
- 
+
 def fmt_date(iso):
     if not iso: return ''
     try:
@@ -37,7 +46,7 @@ def fmt_date(iso):
         return f"{parts[2]}/{parts[1]}/{parts[0]}"
     except:
         return str(iso)
- 
+
 @app.route('/generate-excel',methods=['POST','OPTIONS'])
 def generate_excel():
     if request.method=='OPTIONS':
@@ -46,11 +55,11 @@ def generate_excel():
     orders=data.get('orders',{})
     fecha_entrega=data.get('fecha_entrega','')
     entrega_display = fmt_date(fecha_entrega)
- 
+
     wb=openpyxl.Workbook()
     ws=wb.active
     ws.title='CUADRANTE'
- 
+
     # ROW 1: store numbers
     for c,v in [(1,None),(2,None),(3,'F'),(4,None)]:
         ws.cell(1,c).value=v
@@ -66,7 +75,7 @@ def generate_excel():
         st(ws.cell(1,col+1),bg=bg)
         ws.merge_cells(start_row=1,start_column=col,end_row=1,end_column=col+1)
         col+=2
- 
+
     # ROW 2: delivery date + store names
     ws.cell(2,1).value='x'
     ws.cell(2,2).value=entrega_display
@@ -82,7 +91,7 @@ def generate_excel():
         st(ws.cell(2,col+1),bg=bg)
         ws.merge_cells(start_row=2,start_column=col,end_row=2,end_column=col+1)
         col+=2
- 
+
     # ROW 3: headers
     for c,v,a in [(1,'COD.','center'),(2,'CONCEPTO','left'),(3,'F','center'),(4,'T','center')]:
         ws.cell(3,c).value=v
@@ -94,12 +103,11 @@ def generate_excel():
         ws.cell(3,col).value='S'; st(ws.cell(3,col),bg=bg,fg=RED_FG,bold=True,size=8)
         ws.cell(3,col+1).value='P'; st(ws.cell(3,col+1),bg=bg,fg=BLUE_HDR,bold=True,size=8)
         col+=2
- 
+
     # DATA ROWS - una fila por cada combinacion unica de (cod, tipo)
-    # Agrupar por cod -> {tipo -> {sid -> linea}}
     cod_format_map = {}  # {cod: {tipo: {sid: linea}}}
     cod_concepto = {}    # {cod: concepto}
- 
+
     for sid_str, sdata in orders.items():
         try:
             sid = int(sid_str)
@@ -111,35 +119,32 @@ def generate_excel():
             tipo = l.get('tipo', '') or ''
             sobra = l.get('sobra', '') or ''
             pedido = l.get('pedido', '') or ''
- 
+
             # Solo incluir si tiene datos
             if not sobra and not pedido:
                 continue
- 
+
             cod_concepto[cod] = concepto
- 
+
             if cod not in cod_format_map:
                 cod_format_map[cod] = {}
             if tipo not in cod_format_map[cod]:
                 cod_format_map[cod][tipo] = {}
             cod_format_map[cod][tipo][sid] = l
- 
+
     # Ordenar por cod
     sorted_cods = sorted(cod_format_map.keys())
- 
-    # P columns (pedido) for SUM formula - indices dinamicos por fila
-    p_col_letters = [get_column_letter(5 + i*2 + 1) for i in range(len(STORES))]
- 
+
     row = 4
     for cod in sorted_cods:
         concepto = cod_concepto.get(cod, str(cod))
-        format_types = sorted(cod_format_map[cod].keys())  # U, C, K ordenados
- 
+        format_types = sorted(cod_format_map[cod].keys())
+
         for tipo in format_types:
             alt = (row % 2 == 0)
             rbg = 'F5F5F5' if alt else WHITE
- 
-            # SUM formula solo para las columnas que tienen pedido en este formato
+
+            # SUM total pedidos
             sum_parts = []
             col = 5
             for i, (sid, snom) in enumerate(STORES):
@@ -147,45 +152,46 @@ def generate_excel():
                 sum_parts.append(f'IF(ISNUMBER({p_col}{row}),{p_col}{row},0)')
                 col += 2
             sum_formula = '=IFERROR(SUM(' + '+'.join(sum_parts) + '),0)'
- 
+
             ws.cell(row, 1).value = cod
             st(ws.cell(row, 1), bg=COD_BG, fg=COD_FG, bold=True)
- 
+
             ws.cell(row, 2).value = concepto
             st(ws.cell(row, 2), bg=rbg, align='left')
- 
+
             ws.cell(row, 3).value = sum_formula
             st(ws.cell(row, 3), bg=YELLOW, bold=True, fg='000000')
- 
+
             ws.cell(row, 4).value = tipo
             st(ws.cell(row, 4), bg=rbg, fg='888888')
- 
+
             col = 5
             for i, (sid, snom) in enumerate(STORES):
                 bg = (PINK if alt else PINK2) if i % 2 == 0 else rbg
+
                 s_val = ''
                 p_val = ''
- 
-                # Solo mostrar datos si esta tienda pidio en ESTE formato
+
                 if sid in cod_format_map[cod].get(tipo, {}):
                     l = cod_format_map[cod][tipo][sid]
                     s_val = l.get('sobra', '') or ''
                     p_val = l.get('pedido', '') or ''
- 
-                ws.cell(row, col).value = s_val if s_val else None
-                st(ws.cell(row, col), bg=bg, fg=RED_FG if s_val else '000000', bold=bool(s_val))
- 
-                try:
-                    ws.cell(row, col+1).value = float(p_val) if p_val else None
-                except:
-                    ws.cell(row, col+1).value = p_val if p_val else None
-                st(ws.cell(row, col+1), bg=bg, fg=BLUE_HDR if p_val else '000000', bold=bool(p_val))
- 
+
+                # SOBRA - convertir a número (acepta coma y punto)
+                s_num = to_num(s_val)
+                ws.cell(row, col).value = s_num
+                st(ws.cell(row, col), bg=bg, fg=RED_FG if s_num else '000000', bold=bool(s_num))
+
+                # PEDIDO - convertir a número (acepta coma y punto)
+                p_num = to_num(p_val)
+                ws.cell(row, col+1).value = p_num
+                st(ws.cell(row, col+1), bg=bg, fg=BLUE_HDR if p_num else '000000', bold=bool(p_num))
+
                 col += 2
- 
+
             ws.row_dimensions[row].height = 14
             row += 1
- 
+
     # ENCARGS
     has_enc = any(orders.get(str(sid), {}).get('encargs', '') for sid, _ in STORES)
     if has_enc:
@@ -201,7 +207,7 @@ def generate_excel():
             st(ws.cell(row, col+1), bg=bg)
             col += 2
         ws.row_dimensions[row].height = 40
- 
+
     # Widths
     ws.column_dimensions['A'].width = 7
     ws.column_dimensions['B'].width = 24
@@ -212,22 +218,22 @@ def generate_excel():
         ws.column_dimensions[get_column_letter(col)].width = 6
         ws.column_dimensions[get_column_letter(col+1)].width = 6
         col += 2
- 
+
     ws.freeze_panes = 'E4'
     ws.row_dimensions[1].height = 16
     ws.row_dimensions[2].height = 18
     ws.row_dimensions[3].height = 14
- 
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     fname = f'KITEL_{entrega_display.replace("/", "-")}.xlsx'
     return send_file(buf, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
                      as_attachment=True, download_name=fname)
- 
+
 @app.route('/')
 def health():
     return jsonify({'status': 'ok'})
- 
+
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
