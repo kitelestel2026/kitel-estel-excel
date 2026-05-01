@@ -3,6 +3,7 @@ from flask_cors import CORS
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 from openpyxl.utils import get_column_letter
+from openpyxl.worksheet.page import PageMargins
 import io
 
 app = Flask(__name__)
@@ -60,6 +61,32 @@ def generate_excel():
     ws=wb.active
     ws.title='CUADRANTE'
 
+    # ── CONFIGURACIÓN DE PÁGINA ──
+    # Orientación horizontal
+    ws.page_setup.orientation = 'landscape'
+    ws.page_setup.fitToPage = True
+    ws.page_setup.fitToWidth = 1
+    ws.page_setup.fitToHeight = 0
+    ws.page_setup.paperSize = ws.PAPERSIZE_A4
+
+    # Sin márgenes - página bien ajustada
+    ws.page_margins = PageMargins(left=0, right=0, top=0, bottom=0, header=0, footer=0)
+    ws.page_setup.scale = None
+
+    # Fijar filas 1-3 en impresión (títulos)
+    ws.print_title_rows = '1:3'
+
+    # Fijar columnas A-D en impresión
+    ws.print_title_cols = 'A:D'
+
+    # Salto de página desde columna U (columna 21)
+    # Columna U = después de la 4ª tienda (cols 5-20 = 8 tiendas → col 21 = inicio 9ª tienda)
+    # Col U = 21: después de DANTE(5-6), CORCEGA(7-8), BORRELL(9-10), VALENCIA(11-12),
+    #             CONSEJO(13-14), BAILEN(15-16), P.NOU(17-18), DOMICILI(19-20)
+    from openpyxl.worksheet.pagebreak import Break
+    col_break = Break(id=21)  # Columna U = 21
+    ws.col_breaks.append(col_break)
+
     # ROW 1: store numbers
     for c,v in [(1,None),(2,None),(3,'F'),(4,None)]:
         ws.cell(1,c).value=v
@@ -104,9 +131,9 @@ def generate_excel():
         ws.cell(3,col+1).value='P'; st(ws.cell(3,col+1),bg=bg,fg=BLUE_HDR,bold=True,size=8)
         col+=2
 
-    # DATA ROWS - una fila por cada combinacion unica de (cod, tipo)
-    cod_format_map = {}  # {cod: {tipo: {sid: linea}}}
-    cod_concepto = {}    # {cod: concepto}
+    # DATA ROWS
+    cod_format_map = {}
+    cod_concepto = {}
 
     for sid_str, sdata in orders.items():
         try:
@@ -120,31 +147,28 @@ def generate_excel():
             sobra = l.get('sobra', '') or ''
             pedido = l.get('pedido', '') or ''
 
-            # Solo incluir si tiene datos
             if not sobra and not pedido:
                 continue
 
             cod_concepto[cod] = concepto
-
             if cod not in cod_format_map:
                 cod_format_map[cod] = {}
             if tipo not in cod_format_map[cod]:
                 cod_format_map[cod][tipo] = {}
             cod_format_map[cod][tipo][sid] = l
 
-    # Ordenar por cod
     sorted_cods = sorted(cod_format_map.keys())
 
     row = 4
     for cod in sorted_cods:
-        concepto = cod_concepto.get(cod, str(cod))
+        # Nombre en MAYÚSCULAS
+        concepto = cod_concepto.get(cod, str(cod)).upper()
         format_types = sorted(cod_format_map[cod].keys())
 
         for tipo in format_types:
             alt = (row % 2 == 0)
             rbg = 'F5F5F5' if alt else WHITE
 
-            # SUM total pedidos
             sum_parts = []
             col = 5
             for i, (sid, snom) in enumerate(STORES):
@@ -177,15 +201,23 @@ def generate_excel():
                     s_val = l.get('sobra', '') or ''
                     p_val = l.get('pedido', '') or ''
 
-                # SOBRA - convertir a número (acepta coma y punto)
+                # SOBRA → normal (no negrita)
                 s_num = to_num(s_val)
                 ws.cell(row, col).value = s_num
-                st(ws.cell(row, col), bg=bg, fg=RED_FG if s_num else '000000', bold=bool(s_num))
+                cell_s = ws.cell(row, col)
+                cell_s.font = Font(name='Arial', bold=False, color=RED_FG if s_num else '000000', size=9)
+                cell_s.fill = PatternFill('solid', fgColor=bg)
+                cell_s.alignment = Alignment(horizontal='center', vertical='center')
+                cell_s.border = brd()
 
-                # PEDIDO - convertir a número (acepta coma y punto)
+                # PEDIDO → negrita
                 p_num = to_num(p_val)
                 ws.cell(row, col+1).value = p_num
-                st(ws.cell(row, col+1), bg=bg, fg=BLUE_HDR if p_num else '000000', bold=bool(p_num))
+                cell_p = ws.cell(row, col+1)
+                cell_p.font = Font(name='Arial', bold=True if p_num else False, color=BLUE_HDR if p_num else '000000', size=9)
+                cell_p.fill = PatternFill('solid', fgColor=bg)
+                cell_p.alignment = Alignment(horizontal='center', vertical='center')
+                cell_p.border = brd()
 
                 col += 2
 
@@ -219,7 +251,9 @@ def generate_excel():
         ws.column_dimensions[get_column_letter(col+1)].width = 6
         col += 2
 
+    # Fijar paneles (freeze panes) - A-D y filas 1-3
     ws.freeze_panes = 'E4'
+
     ws.row_dimensions[1].height = 16
     ws.row_dimensions[2].height = 18
     ws.row_dimensions[3].height = 14
