@@ -79,14 +79,6 @@ def generate_excel():
     # Fijar columnas A-D en impresión
     ws.print_title_cols = 'A:D'
 
-    # Salto de página desde columna U (columna 21)
-    # Columna U = después de la 4ª tienda (cols 5-20 = 8 tiendas → col 21 = inicio 9ª tienda)
-    # Col U = 21: después de DANTE(5-6), CORCEGA(7-8), BORRELL(9-10), VALENCIA(11-12),
-    #             CONSEJO(13-14), BAILEN(15-16), P.NOU(17-18), DOMICILI(19-20)
-    from openpyxl.worksheet.pagebreak import Break
-    col_break = Break(id=21)  # Columna U = 21
-    ws.col_breaks.append(col_break)
-
     # ROW 1: store numbers
     for c,v in [(1,None),(2,None),(3,'F'),(4,None)]:
         ws.cell(1,c).value=v
